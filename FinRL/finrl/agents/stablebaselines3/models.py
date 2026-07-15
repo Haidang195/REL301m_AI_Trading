@@ -83,7 +83,11 @@ class TensorboardCallback(BaseCallback):
 
     def _on_rollout_end(self) -> bool:
         try:
-            rollout_buffer_rewards = self.locals["rollout_buffer"].rewards.flatten()
+            rollout_buffer = self.locals.get("rollout_buffer")
+            if rollout_buffer is None:
+                raise KeyError("rollout_buffer")
+
+            rollout_buffer_rewards = rollout_buffer.rewards.flatten()
             self.logger.record(
                 key="train/reward_min", value=min(rollout_buffer_rewards)
             )
@@ -93,12 +97,10 @@ class TensorboardCallback(BaseCallback):
             self.logger.record(
                 key="train/reward_max", value=max(rollout_buffer_rewards)
             )
-        except BaseException as error:
-            # Handle the case where "rewards" is not found
+        except Exception:
             self.logger.record(key="train/reward_min", value=None)
             self.logger.record(key="train/reward_mean", value=None)
             self.logger.record(key="train/reward_max", value=None)
-            print("Logging Error:", error)
         return True
 
 
@@ -140,8 +142,29 @@ class DRLAgent:
             )  # this is more informative than NotImplementedError("NotImplementedError")
 
         if model_kwargs is None:
-            model_kwargs = MODEL_KWARGS[model_name]
-            
+            model_kwargs = MODEL_KWARGS[model_name].copy()
+        else:
+            model_kwargs = model_kwargs.copy()
+
+        if policy_kwargs is None:
+            policy_kwargs = {}
+        else:
+            policy_kwargs = policy_kwargs.copy()
+
+        if "policy_kwargs" in model_kwargs:
+            merged_policy_kwargs = dict(model_kwargs.pop("policy_kwargs"))
+            merged_policy_kwargs.update(policy_kwargs)
+            policy_kwargs = merged_policy_kwargs
+
+        # Some model-specific options belong to the algorithm (model) and
+        # not the policy class. For TQC, `top_quantiles_to_drop_per_net`
+        # is an argument of the TQC constructor, not the policy, so move
+        # it from `policy_kwargs` to `model_kwargs` when present.
+        if model_name == "tqc" and "top_quantiles_to_drop_per_net" in policy_kwargs:
+            model_kwargs["top_quantiles_to_drop_per_net"] = policy_kwargs.pop(
+                "top_quantiles_to_drop_per_net"
+            )
+
         if model_name == "rppo":
             import gymnasium as gym
             policy = "MultiInputLstmPolicy" if isinstance(self.env.observation_space, gym.spaces.Dict) else "MlpLstmPolicy"
@@ -151,11 +174,10 @@ class DRLAgent:
             model_kwargs["action_noise"] = NOISE[model_kwargs["action_noise"]](
                 mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions)
             )
-        print(model_kwargs)
-        
+
         # Apply VecNormalize to dynamically normalize observations and rewards
         self.env = VecNormalize(self.env, norm_obs=True, norm_reward=True, clip_obs=10.0)
-        
+
         return MODELS[model_name](
             policy=policy,
             env=self.env,
@@ -277,16 +299,25 @@ class DRLEnsembleAgent:
             )  # this is more informative than NotImplementedError("NotImplementedError")
 
         if model_kwargs is None:
-            temp_model_kwargs = MODEL_KWARGS[model_name]
+            temp_model_kwargs = MODEL_KWARGS[model_name].copy()
         else:
             temp_model_kwargs = model_kwargs.copy()
+
+        if policy_kwargs is None:
+            policy_kwargs = {}
+        else:
+            policy_kwargs = policy_kwargs.copy()
+
+        if "policy_kwargs" in temp_model_kwargs:
+            merged_policy_kwargs = dict(temp_model_kwargs.pop("policy_kwargs"))
+            merged_policy_kwargs.update(policy_kwargs)
+            policy_kwargs = merged_policy_kwargs
 
         if "action_noise" in temp_model_kwargs:
             n_actions = env.action_space.shape[-1]
             temp_model_kwargs["action_noise"] = NOISE[
                 temp_model_kwargs["action_noise"]
             ](mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
-        print(temp_model_kwargs)
         return MODELS[model_name](
             policy=policy,
             env=env,
