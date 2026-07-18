@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import dates as mdates
 import numpy as np
 import pandas as pd
 from stable_baselines3 import A2C, DDPG, PPO, SAC, TD3
@@ -183,31 +184,42 @@ dji = pd.merge(
 
 # %% Part 6. Compare results
 
+def _normalize_datetime_index(series):
+    if series is None:
+        return None
+    normalized = series.copy()
+    normalized.index = pd.to_datetime(normalized.index, errors="coerce")
+    return normalized
+
+
 df_result_a2c = (
-    df_account_value_a2c.set_index(df_account_value_a2c.columns[0])
+    _normalize_datetime_index(df_account_value_a2c.set_index(df_account_value_a2c.columns[0]))
     if if_using_a2c
     else None
 )
 df_result_ddpg = (
-    df_account_value_ddpg.set_index(df_account_value_ddpg.columns[0])
+    _normalize_datetime_index(df_account_value_ddpg.set_index(df_account_value_ddpg.columns[0]))
     if if_using_ddpg
     else None
 )
 df_result_ppo = (
-    df_account_value_ppo.set_index(df_account_value_ppo.columns[0])
+    _normalize_datetime_index(df_account_value_ppo.set_index(df_account_value_ppo.columns[0]))
     if if_using_ppo
     else None
 )
 df_result_td3 = (
-    df_account_value_td3.set_index(df_account_value_td3.columns[0])
+    _normalize_datetime_index(df_account_value_td3.set_index(df_account_value_td3.columns[0]))
     if if_using_td3
     else None
 )
 df_result_sac = (
-    df_account_value_sac.set_index(df_account_value_sac.columns[0])
+    _normalize_datetime_index(df_account_value_sac.set_index(df_account_value_sac.columns[0]))
     if if_using_sac
     else None
 )
+
+MVO_result.index = pd.to_datetime(MVO_result.index, errors="coerce")
+dji.index = pd.to_datetime(dji.index, errors="coerce")
 
 result = pd.DataFrame(
     {
@@ -228,12 +240,36 @@ print(result)
 # %% Part 7. Plot
 
 plt.rcParams["figure.figsize"] = (15, 5)
-plt.figure()
-result.plot()
-plt.title("Portfolio Value Over Time")
-plt.xlabel("Date")
-plt.ylabel("Portfolio Value ($)")
-plt.savefig("backtest_result.png", dpi=150, bbox_inches="tight")
+fig, ax = plt.subplots()
+
+style_map = {
+    "a2c": {"color": "tab:blue", "linewidth": 1.2, "linestyle": "-"},
+    "ddpg": {"color": "#FFFF33", "linewidth": 1.2, "linestyle": "-"},
+    "ppo": {"color": "tab:purple", "linewidth": 1.2, "linestyle": "-"},
+    "td3": {"color": "tab:green", "linewidth": 1.2, "linestyle": "-"},
+    "sac": {"color": "tab:orange", "linewidth": 1.2, "linestyle": "-"},
+    "tqc": {"color": "tab:cyan", "linewidth": 1.2, "linestyle": "-"},
+    "mvo": {"color": "#000000", "linewidth": 1.2, "linestyle": ":"},
+    "dji": {"color": "#FF0000", "linewidth": 1.2, "linestyle": "--"},
+}
+
+for column in result.columns:
+    series = result[column]
+    if series is None or series.dropna().empty:
+        continue
+    style = style_map.get(column.lower(), {"color": "gray", "linewidth": 1.0, "linestyle": "-"})
+    ax.plot(series.index, series.values, label=column, **style)
+
+ax.set_title("Portfolio Value Over Time")
+ax.set_xlabel("Date")
+ax.set_ylabel("Portfolio Value ($)")
+ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+fig.autofmt_xdate()
+ax.legend()
+fig.tight_layout()
+fig.savefig("backtest_result.png", dpi=150, bbox_inches="tight")
+plt.close(fig)
 print("\nPlot saved to backtest_result.png")
 
 # %% Part 8. Quantstats metrics
