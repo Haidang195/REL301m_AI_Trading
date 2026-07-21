@@ -1,5 +1,6 @@
 # directory
 from __future__ import annotations
+from datetime import datetime
 
 DATA_SAVE_DIR = "datasets"
 TRAINED_MODEL_DIR = "trained_models"
@@ -8,13 +9,13 @@ RESULTS_DIR = "results"
 
 # date format: '%Y-%m-%d'
 TRAIN_START_DATE = "2014-01-06"
-TRAIN_END_DATE = "2026-03-31"
+TRAIN_END_DATE = "2025-12-31"
 
-TEST_START_DATE = "2026-04-01"
-TEST_END_DATE = "2026-06-25"
+TEST_START_DATE = "2026-01-01"
+TEST_END_DATE = datetime.today().strftime("%Y-%m-%d")
 
-TRADE_START_DATE = "2026-04-01"
-TRADE_END_DATE = "2026-06-25"
+TRADE_START_DATE = TEST_START_DATE
+TRADE_END_DATE = TEST_END_DATE
 
 # stockstats technical indicator column names
 # check https://pypi.org/project/stockstats/ for different names
