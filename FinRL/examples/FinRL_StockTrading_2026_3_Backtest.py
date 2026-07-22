@@ -19,9 +19,10 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import A2C, DDPG, PPO, SAC, TD3
 try:
-    from sb3_contrib import TQC
+    from sb3_contrib import TQC, RecurrentPPO
 except ImportError:
     TQC = None
+    RecurrentPPO = None
 
 import sys
 import os
@@ -50,6 +51,7 @@ if_using_ppo = True
 if_using_td3 = True
 if_using_sac = True
 if_using_tqc = True
+if_using_rppo = True
 
 trained_a2c = A2C.load(TRAINED_MODEL_DIR + "/agent_a2c") if if_using_a2c else None
 trained_ddpg = DDPG.load(TRAINED_MODEL_DIR + "/agent_ddpg") if if_using_ddpg else None
@@ -57,6 +59,7 @@ trained_ppo = PPO.load(TRAINED_MODEL_DIR + "/agent_ppo") if if_using_ppo else No
 trained_td3 = TD3.load(TRAINED_MODEL_DIR + "/agent_td3") if if_using_td3 else None
 trained_sac = SAC.load(TRAINED_MODEL_DIR + "/agent_sac") if if_using_sac else None
 trained_tqc = TQC.load(TRAINED_MODEL_DIR + "/agent_tqc") if (if_using_tqc and TQC is not None) else None
+trained_rppo = RecurrentPPO.load(TRAINED_MODEL_DIR + "/agent_rppo") if (if_using_rppo and RecurrentPPO is not None) else None
 
 # %% Part 3. Backtesting - DRL agents
 
@@ -117,6 +120,12 @@ df_account_value_sac, df_actions_sac = (
 df_account_value_tqc, df_actions_tqc = (
     DRLAgent.DRL_prediction(model=trained_tqc, environment=e_trade_gym, vec_env_path=TRAINED_MODEL_DIR + "/agent_tqc_vecnormalize.pkl")
     if if_using_tqc and trained_tqc is not None
+    else (None, None)
+)
+
+df_account_value_rppo, df_actions_rppo = (
+    DRLAgent.DRL_prediction(model=trained_rppo, environment=e_trade_gym, vec_env_path=TRAINED_MODEL_DIR + "/agent_rppo_vecnormalize.pkl")
+    if if_using_rppo and trained_rppo is not None
     else (None, None)
 )
 
@@ -217,6 +226,16 @@ df_result_sac = (
     if if_using_sac
     else None
 )
+df_result_tqc = (
+    _normalize_datetime_index(df_account_value_tqc.set_index(df_account_value_tqc.columns[0]))
+    if (if_using_tqc and df_account_value_tqc is not None)
+    else None
+)
+df_result_rppo = (
+    _normalize_datetime_index(df_account_value_rppo.set_index(df_account_value_rppo.columns[0]))
+    if (if_using_rppo and df_account_value_rppo is not None)
+    else None
+)
 
 MVO_result.index = pd.to_datetime(MVO_result.index, errors="coerce")
 dji.index = pd.to_datetime(dji.index, errors="coerce")
@@ -228,7 +247,8 @@ result = pd.DataFrame(
         "ppo": df_result_ppo["account_value"] if if_using_ppo else None,
         "td3": df_result_td3["account_value"] if if_using_td3 else None,
         "sac": df_result_sac["account_value"] if if_using_sac else None,
-        "tqc": df_account_value_tqc.set_index(df_account_value_tqc.columns[0])["account_value"] if (if_using_tqc and df_account_value_tqc is not None) else None,
+        "tqc": df_result_tqc["account_value"] if df_result_tqc is not None else None,
+        "rppo": df_result_rppo["account_value"] if df_result_rppo is not None else None,
         "mvo": MVO_result["Mean Var"],
         "dji": dji["close"],
     }
@@ -249,6 +269,7 @@ style_map = {
     "td3": {"color": "tab:green", "linewidth": 1.2, "linestyle": "-"},
     "sac": {"color": "tab:orange", "linewidth": 1.2, "linestyle": "-"},
     "tqc": {"color": "tab:cyan", "linewidth": 1.2, "linestyle": "-"},
+    "rppo": {"color": "tab:pink", "linewidth": 1.2, "linestyle": "-"},
     "mvo": {"color": "#000000", "linewidth": 1.2, "linestyle": ":"},
     "dji": {"color": "#FF0000", "linewidth": 1.2, "linestyle": "--"},
 }
@@ -283,7 +304,8 @@ try:
         ("PPO", df_result_ppo),
         ("TD3", df_result_td3),
         ("SAC", df_result_sac),
-        ("TQC", df_account_value_tqc.set_index(df_account_value_tqc.columns[0]) if (if_using_tqc and df_account_value_tqc is not None) else None),
+        ("TQC", df_result_tqc),
+        ("RPPO", df_result_rppo),
     ]
     
     for name, df in agent_dfs:

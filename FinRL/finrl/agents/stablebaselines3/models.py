@@ -320,6 +320,11 @@ class DRLEnsembleAgent:
             temp_model_kwargs["action_noise"] = NOISE[
                 temp_model_kwargs["action_noise"]
             ](mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+
+        if model_name == "rppo":
+            import gymnasium as gym
+            policy = "MultiInputLstmPolicy" if isinstance(env.observation_space, gym.spaces.Dict) else "MlpLstmPolicy"
+
         return MODELS[model_name](
             policy=policy,
             env=env,
@@ -496,8 +501,8 @@ class DRLEnsembleAgent:
             model_name,
             tb_log_name=f"{model_name}_{i}",
             iter_num=i,
-            total_timesteps=timesteps_dict[model_name],
-        )  # 100_000
+            total_timesteps=timesteps_dict.get(model_name, 10_000),
+        )  # 10_000
         print(
             f"======{model_name} Validation from: ",
             validation_start_date,
@@ -546,6 +551,8 @@ class DRLEnsembleAgent:
         SAC_model_kwargs,
         TD3_model_kwargs,
         timesteps_dict,
+        TQC_model_kwargs=None,
+        RPPO_model_kwargs=None,
     ):
         # Model Parameters
         kwargs = {
@@ -555,8 +562,12 @@ class DRLEnsembleAgent:
             "sac": SAC_model_kwargs,
             "td3": TD3_model_kwargs,
         }
+        if TQC_model_kwargs is not None:
+            kwargs["tqc"] = TQC_model_kwargs
+        if RPPO_model_kwargs is not None:
+            kwargs["rppo"] = RPPO_model_kwargs
         # Model Sharpe Ratios
-        model_dct = {k: {"sharpe_list": [], "sharpe": -1} for k in MODELS.keys()}
+        model_dct = {k: {"sharpe_list": [], "sharpe": -1} for k in kwargs.keys()}
 
         """Ensemble Strategy that combines A2C, PPO, DDPG, SAC, and TD3"""
         print("============Start Ensemble Strategy============")
@@ -692,7 +703,7 @@ class DRLEnsembleAgent:
             # print("training: ",len(data_split(df, start=20090000, end=test.datadate.unique()[i-rebalance_window]) ))
             # print("==============Model Training===========")
             # Train Each Model
-            for model_name in MODELS.keys():
+            for model_name in kwargs.keys():
                 # Train The Model
                 model, sharpe_list, sharpe = self._train_window(
                     model_name,
@@ -733,9 +744,9 @@ class DRLEnsembleAgent:
             # )])
             # Model Selection based on sharpe ratio
             # Same order as MODELS: {"a2c": A2C, "ddpg": DDPG, "td3": TD3, "sac": SAC, "ppo": PPO}
-            sharpes = [model_dct[k]["sharpe"] for k in MODELS.keys()]
+            sharpes = [model_dct[k]["sharpe"] for k in kwargs.keys()]
             # Find the model with the highest sharpe ratio
-            max_mod = list(MODELS.keys())[np.argmax(sharpes)]
+            max_mod = list(kwargs.keys())[np.argmax(sharpes)]
             model_use.append(max_mod.upper())
             model_ensemble = model_dct[max_mod]["model"]
             # Training and Validation ends
@@ -761,29 +772,18 @@ class DRLEnsembleAgent:
         end = time.time()
         print("Ensemble Strategy took: ", (end - start) / 60, " minutes")
 
-        df_summary = pd.DataFrame(
-            [
-                iteration_list,
-                validation_start_date_list,
-                validation_end_date_list,
-                model_use,
-                model_dct["a2c"]["sharpe_list"],
-                model_dct["ppo"]["sharpe_list"],
-                model_dct["ddpg"]["sharpe_list"],
-                model_dct["sac"]["sharpe_list"],
-                model_dct["td3"]["sharpe_list"],
-            ]
-        ).T
-        df_summary.columns = [
-            "Iter",
-            "Val Start",
-            "Val End",
-            "Model Used",
-            "A2C Sharpe",
-            "PPO Sharpe",
-            "DDPG Sharpe",
-            "SAC Sharpe",
-            "TD3 Sharpe",
+        summary_data = [
+            iteration_list,
+            validation_start_date_list,
+            validation_end_date_list,
+            model_use,
         ]
+        summary_cols = ["Iter", "Val Start", "Val End", "Model Used"]
+        for k in kwargs.keys():
+            summary_data.append(model_dct[k]["sharpe_list"])
+            summary_cols.append(f"{k.upper()} Sharpe")
+
+        df_summary = pd.DataFrame(summary_data).T
+        df_summary.columns = summary_cols
 
         return df_summary

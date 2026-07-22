@@ -71,6 +71,7 @@ if_using_ppo = True
 if_using_td3 = True
 if_using_sac = True
 if_using_tqc = True
+if_using_rppo = True
 
 TOTAL_TIMESTEPS = 50000 # Update total timesteps to 50,000 for faster training
 
@@ -79,10 +80,16 @@ import torch.nn as nn
 def train_agent(agent_name):
     # ARCH1: Upgrade network size to 256x256 (from 64x64) and use GELU activation
     # Defining it inside the function prevents SB3 from mutating a shared global dictionary
-    current_policy_kwargs = dict(
-        net_arch=[256, 256],           
-        activation_fn=nn.GELU,
-    )
+    if agent_name == "rppo":
+        current_policy_kwargs = dict(
+            net_arch=dict(pi=[256, 256], vf=[256, 256]), 
+            activation_fn=nn.GELU,
+        )
+    else:
+        current_policy_kwargs = dict(
+            net_arch=[256, 256],           
+            activation_fn=nn.GELU,
+        )
     
     agent = DRLAgent(env=env_train)
     model = agent.get_model(agent_name, policy_kwargs=current_policy_kwargs)
@@ -132,5 +139,10 @@ if if_using_tqc:
         trained_tqc = train_agent("tqc")
     except ValueError:
         print("TQC not available (install sb3-contrib)")
+if if_using_rppo:
+    try:
+        trained_rppo = train_agent("rppo")
+    except ValueError:
+        print("RecurrentPPO not available (install sb3-contrib)")
 
 print("All agents trained and saved to", TRAINED_MODEL_DIR)
